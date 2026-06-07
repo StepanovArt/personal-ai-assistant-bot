@@ -18,6 +18,8 @@ env/
 
 # Generated output
 agents/trends_*.md
+.coverage
+.pytest_cache/
 
 # IDE
 .idea/
