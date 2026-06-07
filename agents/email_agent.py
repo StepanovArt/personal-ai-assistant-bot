@@ -5,7 +5,7 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
-from agents.llm import call_ollama
+from agents.llm import call_llm
 import re
 import smtplib
 from email.mime.text import MIMEText
@@ -220,7 +220,7 @@ def analyze_email(message_id: str) -> str:
     Только указанный формат.
     """
 
-    answer = call_ollama(prompt)
+    answer = call_llm(prompt)
 
     try:
         if "DRAFT_REPLY:" not in answer:

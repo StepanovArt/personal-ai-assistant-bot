@@ -20,7 +20,7 @@ import langdetect
 # ВНУТРЕННИЕ МОДУЛИ
 # ============================================================
 from database.db import get_or_create_user,filter_unseen_urls, mark_news_shown
-from agents.llm import call_ollama,build_google_news_url,fetch_article_text,normalize_title
+from agents.llm import call_llm, build_google_news_url, fetch_article_text, normalize_title
 # ============================================================
 # CONFIG
 # ============================================================
@@ -131,7 +131,7 @@ def expand_interests_node(state:TrendState) -> dict:
     {state["user_interests"]}
     """
 
-    answer = call_ollama(prompt)
+    answer = call_llm(prompt)
     queries = [line.strip() for line in answer.split("\n") if line.strip()]
     return {"search_queries": queries}
 

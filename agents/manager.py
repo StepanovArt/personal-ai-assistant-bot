@@ -1,4 +1,4 @@
-from agents.llm import call_ollama
+from agents.llm import call_llm
 
 def manager_respond(user_message: str) -> str:
     prompt = f"""
@@ -40,4 +40,4 @@ def manager_respond(user_message: str) -> str:
 
 Ответ:
 """
-    return call_ollama(prompt)
+    return call_llm(prompt)

@@ -1,3 +1,4 @@
+anthropic
 langgraph
 langchain
 langchain-community

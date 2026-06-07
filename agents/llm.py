@@ -1,34 +1,43 @@
 # ============================================================
 # СТАНДАРТНАЯ БИБЛИОТЕКА
 # ============================================================
+import os
 import string
 from urllib.parse import quote_plus
 
-# ============================================================
-# СТОРОННИЕ БИБЛИОТЕКИ
-# ============================================================
+import anthropic
 import ollama
 import trafilatura
 from googlenewsdecoder import gnewsdecoder
 import requests
-# ============================================================
-# КОНСТАНТЫ (нужны хелперам)
-# ============================================================
+
 OLLAMA_MODEL = "llama3.1"
+CLAUDE_MODEL = "claude-haiku-4-5-20251001"
 MIN_ARTICLE_LENGTH = 200
 
 
-def call_ollama(prompt:str) -> str:
-    """
-    Отправляет промпт в локальную llama3.1 и возвращает текстовый ответ.
-    Args:
-        prompt: текст запроса к модели
+def call_claude(prompt: str) -> str:
+    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    message = client.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=1024,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return message.content[0].text
 
-    Returns:
-        ответ модели как строка
-    """
-    answer = ollama.chat(model=OLLAMA_MODEL,messages=[{'role': 'user' , 'content':prompt}])
-    return answer['message']['content']
+
+def call_ollama(prompt: str) -> str:
+    answer = ollama.chat(model=OLLAMA_MODEL, messages=[{"role": "user", "content": prompt}])
+    return answer["message"]["content"]
+
+
+def call_llm(prompt: str) -> str:
+    """Claude primary, Ollama fallback."""
+    try:
+        return call_claude(prompt)
+    except Exception as e:
+        print(f"⚠️ Claude недоступен ({e}), переключаюсь на Ollama")
+        return call_ollama(prompt)
 
 # собираем URL
 def build_google_news_url(query:str,lang:str = 'en') ->str:

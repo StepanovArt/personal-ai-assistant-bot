@@ -9,7 +9,7 @@ Pipeline:
 
 import json
 
-from agents.llm import call_ollama
+from agents.llm import call_llm
 from agents.trendwatcher import graph as trend_graph
 from database.db import get_db,get_or_create_user, mark_news_shown
 
@@ -86,7 +86,7 @@ def pick_hottest_news(news_list: list[dict]) -> dict | None:
     - ONLY valid JSON response
     """
 
-    answer = call_ollama(prompt)
+    answer = call_llm(prompt)
 
     print("🎯 RAW LLM OUTPUT:")
     print(answer)
@@ -164,7 +164,7 @@ def generate_linkedin_post(topic: str, context: str = "") -> dict:
     """
     print(f"📏 Промпт: {len(prompt)} симв")
     print(f"🤖 Зову Llama...")
-    answer = call_ollama(prompt)
+    answer = call_llm(prompt)
     print(f"✅ Llama ответила: {len(answer)} симв")
     try:
         return json.loads(answer)
