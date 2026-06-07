@@ -60,22 +60,16 @@ personal_ai/
 
 Отчитайся списком: что оставил, что удалил, что добавил.
 
-## Фаза 1 — Исправить критические баги
+## ~~Фаза 1 — Исправить критические баги~~ ✅ DONE
 
-### 1.1 `trendwatcher.py` — `detect` не определён
-- **Файл:** `agents/trendwatcher.py:174`
-- **Баг:** Используется `detect(query)`, но импортирован `import langdetect` (не `from langdetect import detect`)
-- **Фикс:** Заменить `detect(query)` → `langdetect.detect(query)`
+### ✅ 1.1 `trendwatcher.py` — `detect` не определён
+- `detect(query)` → `langdetect.detect(query)`
 
-### 1.2 `bot/main.py` — неверный ключ темы письма
-- **Файл:** `bot/main.py:133`
-- **Баг:** `data.get("Subject", ...)` — тема хранится в `current_email`, а не в `data`
-- **Фикс:** `current_email.get("Subject", "No Subject")`
+### ✅ 1.2 `bot/main.py` — неверный ключ темы письма
+- `data.get("Subject", ...)` → `current_email.get("Subject", "No Subject")`
 
-### 1.3 `api/main.py` — несуществующее поле `summaries`
-- **Файл:** `api/main.py:39`
-- **Баг:** `result.get('summaries', [])` — граф возвращает `articles_with_text`, поля `summaries` нет
-- **Фикс:** Привести API к реальной структуре ответа
+### ✅ 1.3 `api/main.py` — несуществующее поле `summaries`
+- Модель переименована: `SummartItem` → `ArticleItem`, поле `summaries` → `articles`, маппинг на `articles_with_text` из графа
 
 ---
 
