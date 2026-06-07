@@ -102,6 +102,24 @@ def init_db() -> None:
             ON users(telegram_id)
         """)
 
+        # --- Таблица расходов ---
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS expenses (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     INTEGER NOT NULL,
+                amount      REAL    NOT NULL,
+                currency    TEXT    NOT NULL DEFAULT 'AED',
+                category    TEXT    NOT NULL,
+                description TEXT,
+                created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_expenses_user_created
+            ON expenses(user_id, created_at)
+        """)
+
         # --- Миграция: новые колонки в users (безопасно для существующих БД) ---
         for col, definition in [
             ("gmail_user",         "TEXT"),
@@ -257,6 +275,54 @@ def cleanup_old_shown_news(days: int = 30) -> int:
             (f'-{days} days',)
         )
         return cursor.rowcount
+
+
+# ============================================================
+# ОПЕРАЦИИ С РАСХОДАМИ
+# ============================================================
+def add_expense(
+    user_id: int, amount: float, currency: str, category: str, description: str
+) -> int:
+    """Сохраняет трату и возвращает её id."""
+    with get_db() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO expenses (user_id, amount, currency, category, description)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (user_id, amount, currency, category, description),
+        )
+        return cursor.lastrowid
+
+
+def get_expenses(user_id: int, days: int = 30) -> list[dict]:
+    """Возвращает расходы пользователя за последние N дней."""
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM expenses
+            WHERE user_id = ? AND created_at >= datetime('now', ?)
+            ORDER BY created_at DESC
+            """,
+            (user_id, f"-{days} days"),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_total_by_category(user_id: int, days: int = 30) -> list[dict]:
+    """Возвращает сумму трат по категориям за последние N дней, убывая."""
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT category, SUM(amount) AS total, currency
+            FROM expenses
+            WHERE user_id = ? AND created_at >= datetime('now', ?)
+            GROUP BY category, currency
+            ORDER BY total DESC
+            """,
+            (user_id, f"-{days} days"),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 # ============================================================

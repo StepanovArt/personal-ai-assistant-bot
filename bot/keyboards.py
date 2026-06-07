@@ -4,6 +4,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 class CB:
     LI_LIKE = "li:like"
     LI_REDO = "li:redo"
+    EXPENSE_STATS = "expense:stats"
 
 
 main_menu = ReplyKeyboardMarkup(
@@ -19,6 +20,10 @@ li_actions = InlineKeyboardMarkup(inline_keyboard=[
         InlineKeyboardButton(text="Нравится", callback_data=CB.LI_LIKE),
         InlineKeyboardButton(text="Переделать", callback_data=CB.LI_REDO),
     ]
+])
+
+expense_saved_kb = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="📊 Итого за месяц", callback_data=CB.EXPENSE_STATS)]
 ])
 
 # ── email (untouched) ──────────────────────────────────────────────────────────
