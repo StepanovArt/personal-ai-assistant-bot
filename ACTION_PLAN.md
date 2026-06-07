@@ -88,22 +88,14 @@ personal_ai/
 
 ---
 
-## Фаза 4 — Замена Ollama → Claude API
+## ~~Фаза 4 — Замена Ollama → Claude API~~ ✅ DONE
 
 Текущий стек: локальная `llama3.1` через `ollama`.
 Проблемы: медленно, нужен локально запущенный сервер.
 
-**Что менять:**
-- `agents/llm.py` — функция `call_ollama()` → `call_claude()`
-- Модель: `claude-haiku-4-5` (быстро + дёшево) для новостей, `claude-sonnet-4-6` для постов
-- Добавить prompt caching для системных промптов
-- Обновить `requirements.txt`: добавить `anthropic`
-
-**Файлы которые используют `call_ollama`:**
-- `agents/manager.py`
-- `agents/trendwatcher.py`
-- `agents/content_creator.py`
-- `agents/email_agent.py`
+- `call_llm()` — Claude primary (`claude-haiku-4-5`), Ollama fallback
+- Все агенты переведены на `call_llm()`, `call_ollama()` сохранён как fallback
+- `ANTHROPIC_API_KEY` добавлен в `.env`
 
 ---
 
