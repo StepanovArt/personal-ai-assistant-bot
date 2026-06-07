@@ -1,7 +1,10 @@
 import email
 import imaplib
+import logging
 import re
 import smtplib
+
+logger = logging.getLogger(__name__)
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -155,7 +158,7 @@ def send_email(
         server.quit()
         return True
     except Exception as e:
-        print(f"❌ Ошибка отправки: {e}")
+        logger.error("Ошибка отправки email: %s", e)
         return False
 
 

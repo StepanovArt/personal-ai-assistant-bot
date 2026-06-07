@@ -1,12 +1,15 @@
 # ============================================================
 # СТАНДАРТНАЯ БИБЛИОТЕКА
 # ============================================================
+import logging
 import os
 import string
 from urllib.parse import quote_plus
 
 import anthropic
 import ollama
+
+logger = logging.getLogger(__name__)
 import trafilatura
 from googlenewsdecoder import gnewsdecoder
 import requests
@@ -36,7 +39,7 @@ def call_llm(prompt: str) -> str:
     try:
         return call_claude(prompt)
     except Exception as e:
-        print(f"⚠️ Claude недоступен ({e}), переключаюсь на Ollama")
+        logger.warning("Claude недоступен (%s), переключаюсь на Ollama", e)
         return call_ollama(prompt)
 
 # собираем URL
@@ -76,13 +79,13 @@ def fetch_article_text(url: str) -> str | None:
 
             if decoded.get("status"):
                 url = decoded["decoded_url"]
-                print(f"     🔓 Real URL: {url[:70]}...")
+                logger.debug("Real URL: %s...", url[:70])
             else:
-                print(f"     ⚠️ Не удалось декодировать Google URL")
+                logger.warning("Не удалось декодировать Google URL")
                 return None
 
         except Exception as e:
-            print(f"     ⚠️ Decoder error: {e}")
+            logger.warning("Decoder error: %s", e)
             return None
 
     # ШАГ 2: скачиваем как раньше
@@ -96,7 +99,7 @@ def fetch_article_text(url: str) -> str | None:
         response = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
 
         if response.status_code != 200:
-            print(f"     ⚠️ Status: {response.status_code}")
+            logger.warning("HTTP %s для %s", response.status_code, url[:70])
             return None
 
         text = trafilatura.extract(
@@ -108,7 +111,7 @@ def fetch_article_text(url: str) -> str | None:
         return text
 
     except Exception as e:
-        print(f"     ⚠️ Error: {e}")
+        logger.warning("Ошибка загрузки статьи: %s", e)
         return None
 
 #избавляемся от дубликатов

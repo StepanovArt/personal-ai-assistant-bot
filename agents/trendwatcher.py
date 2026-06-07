@@ -1,21 +1,21 @@
 # ============================================================
 # СТАНДАРТНАЯ БИБЛИОТЕКА
 # ============================================================
-import json #Когда llama3.1 будет возвращать список запросов или структурированные ответы
-import logging #Когда пайплайн идёт минуту через 10 узлов — без логов ты слепой
-from datetime import datetime #Сохраняя саммари, обычно делают имя файла с датой: summaries_2026-05-05.md.
-from pathlib import Path #Когда save_results_node будет писать саммари в файл, лучше работать с путями через Path
-from typing import TypedDict # ✅ для State и сигнатур
-from urllib.parse import quote_plus #Что делает: превращает "AI стартапы" → "AI+%D1%81%D1%82..." для безопасной вставки в URL.
+import json
+import logging
 import string
+from datetime import datetime
+from typing import TypedDict
+from urllib.parse import quote_plus
+
+logger = logging.getLogger(__name__)
 # ============================================================
 # СТОРОННИЕ БИБЛИОТЕКИ
 # ============================================================
-import feedparser              # парсинг RSS-фидов Google News
-import ollama                  # клиент для локальной llama3.1
-import trafilatura             # извлечение чистого текста из HTML
-from langgraph.graph import StateGraph, START, END
+import feedparser
 import langdetect
+import requests
+from langgraph.graph import StateGraph, START, END
 # ============================================================
 # ВНУТРЕННИЕ МОДУЛИ
 # ============================================================
@@ -56,7 +56,7 @@ class TrendState(TypedDict):
 # NODES
 # ============================================================
 def load_user_node(state: TrendState) -> dict:
-    print(f"🔵 load_user STATE: telegram_id={state.get('telegram_id')}, interests={state.get('user_interests')}")
+    logger.debug("load_user: telegram_id=%s", state.get("telegram_id"))
     user = get_or_create_user(state["telegram_id"], [])
     return {"user_id": user['id']}
 
@@ -66,11 +66,11 @@ def expand_interests_node(state:TrendState) -> dict:
     Превращает список интересов юзера в список поисковых запросов
     через llama3.1.
     """
-    print(f"🔵 expand_interests STATE: interests={state.get('user_interests')}")
     interests = state.get("user_interests", [])
+    logger.debug("expand_interests: %s", interests)
 
     if not interests:
-        print("⚠️ Нет интересов — пропускаем")
+        logger.warning("Нет интересов — пропускаем")
         return {"search_queries": []}
 
 
@@ -136,62 +136,49 @@ def expand_interests_node(state:TrendState) -> dict:
     return {"search_queries": queries}
 
 
-import requests
-import feedparser
-
-
-def search_news_node(state):
+def search_news_node(state: TrendState) -> dict:
+    """Ищет новости по каждому поисковому запросу через Google News RSS."""
     queries = state.get("search_queries", [])
     if not queries:
         return {"raw_news": []}
 
-    print(f"🔍 Поиск по {len(queries)} запросам...")
-
+    logger.info("Поиск по %d запросам...", len(queries))
     raw_news = []
 
     for query in queries:
         url = build_google_news_url(query)
-        print(f"  🌐 URL: {url}")
-
         try:
-            # 🆕 Скачиваем через requests (с редиректами)
             response = requests.get(
                 url,
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                },
+                headers={"User-Agent": "Mozilla/5.0"},
                 allow_redirects=True,
-                timeout=10
+                timeout=10,
             )
-
-            # 🆕 feedparser получает уже готовый контент
             feed = feedparser.parse(response.content)
-
             entries = feed.entries
 
-            # Определяем язык запроса
             try:
                 lang = langdetect.detect(query)
-            except:
+            except Exception:
                 lang = "en"
 
-            print(f"  '{query}' [{lang}] → {len(entries)} результатов")
+            logger.debug("'%s' [%s] → %d результатов", query, lang, len(entries))
 
             for entry in entries:
                 raw_news.append({
                     "title": entry.get("title", ""),
                     "url": entry.get("link", ""),
-                    "source": entry.get("source", {}).get("title", "Unknown") if isinstance(entry.get("source"),
-                                                                                            dict) else str(
-                        entry.get("source", "Unknown")),
+                    "source": entry.get("source", {}).get("title", "Unknown")
+                        if isinstance(entry.get("source"), dict)
+                        else str(entry.get("source", "Unknown")),
                     "published": entry.get("published", ""),
                     "lang": lang,
                 })
         except Exception as e:
-            print(f"  ⚠️ Ошибка: {e}")
+            logger.warning("Ошибка при поиске '%s': %s", query, e)
             continue
 
-    print(f"📰 Всего собрано: {len(raw_news)}")
+    logger.info("Всего собрано: %d новостей", len(raw_news))
     return {"raw_news": raw_news}
 
 def deduplicate_node(state:TrendState) -> dict:
@@ -243,35 +230,28 @@ def read_articles_node(state: TrendState) -> dict:
     max_articles = state.get("max_articles", 5)
     to_fetch = relevant_news[:max_articles]
 
-    print(f"📚 Скачиваю текст {len(to_fetch)} статей...")
-
+    logger.info("Скачиваю текст %d статей...", len(to_fetch))
     articles_with_text = []
 
     for i, news in enumerate(to_fetch, 1):
         url = news.get("url", "")
         title = news.get("title", "")[:60]
+        logger.debug("[%d/%d] %s", i, len(to_fetch), title)
 
-        print(f"  [{i}/{len(to_fetch)}] 📄 {title}...")
-
-        # 🆕 fetch_article_text сама разберётся с Google URL
         text = fetch_article_text(url)
 
         if not text:
-            print(f"     ❌ Не получили текст")
+            logger.debug("Нет текста: %s", url[:70])
             continue
 
         if len(text) < 200:
-            print(f"     ⏭ Слишком короткий ({len(text)} символов)")
+            logger.debug("Слишком короткий (%d символов): %s", len(text), url[:70])
             continue
 
-        print(f"     ✅ Получено {len(text)} символов")
+        logger.debug("Получено %d символов", len(text))
+        articles_with_text.append({**news, "text": text})
 
-        articles_with_text.append({
-            **news,
-            "text": text,
-        })
-
-    print(f"📊 Итого скачано: {len(articles_with_text)} из {len(to_fetch)}")
+    logger.info("Скачано: %d из %d", len(articles_with_text), len(to_fetch))
 
     return {"articles_with_text": articles_with_text}
 

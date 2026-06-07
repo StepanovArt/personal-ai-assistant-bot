@@ -1,9 +1,16 @@
 import asyncio
+import logging
 import os
 import certifi
 
 os.environ['SSL_CERT_FILE'] = certifi.where()
 os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher

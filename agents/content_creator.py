@@ -8,8 +8,11 @@ Pipeline:
 """
 
 import json
+import logging
 
 from agents.llm import call_llm
+
+logger = logging.getLogger(__name__)
 from agents.trendwatcher import graph as trend_graph
 from database.db import get_db,get_or_create_user, mark_news_shown
 
@@ -88,8 +91,7 @@ def pick_hottest_news(news_list: list[dict]) -> dict | None:
 
     answer = call_llm(prompt)
 
-    print("🎯 RAW LLM OUTPUT:")
-    print(answer)
+    logger.debug("LLM selector output: %s", answer)
 
     # =========================
     # SAFE PARSING
@@ -108,7 +110,7 @@ def pick_hottest_news(news_list: list[dict]) -> dict | None:
         return chosen
 
     except Exception as e:
-        print(f"⚠️ fallback triggered: {e}")
+        logger.warning("Selector fallback triggered: %s", e)
 
         chosen = news_list[0].copy()
         chosen["reason"] = "fallback: LLM output invalid"
@@ -121,8 +123,7 @@ def pick_hottest_news(news_list: list[dict]) -> dict | None:
 
 def generate_linkedin_post(topic: str, context: str = "") -> dict:
     """Генерирует 3 варианта поста."""
-    print(f"📏 Топик: {len(topic)} симв")
-    print(f"📏 Контекст: {len(context)} симв")
+    logger.debug("Topic length: %d chars, context length: %d chars", len(topic), len(context))
     prompt = f"""
     You are a senior LinkedIn content writer for an AI/Tech engineer.
 
@@ -162,10 +163,10 @@ def generate_linkedin_post(topic: str, context: str = "") -> dict:
 
     Write the post now.
     """
-    print(f"📏 Промпт: {len(prompt)} симв")
-    print(f"🤖 Зову Llama...")
+    logger.debug("Prompt length: %d chars", len(prompt))
+    logger.info("Calling LLM for post generation...")
     answer = call_llm(prompt)
-    print(f"✅ Llama ответила: {len(answer)} симв")
+    logger.info("LLM responded: %d chars", len(answer))
     try:
         return json.loads(answer)
     except Exception:
@@ -208,31 +209,30 @@ def create_post_from_trends(telegram_id: int, interests: list[str]) -> dict:
     user = get_or_create_user(telegram_id, [])
     user_id = user["id"]
 
-    print("📰 Fetching articles...")
+    logger.info("Fetching articles for user %s...", telegram_id)
     articles = fetch_trends(telegram_id, interests, max_articles=5)
 
     if not articles:
         return {"error": "No news found"}
 
-    print(f"✅ Got {len(articles)} articles")
+    logger.info("Got %d articles", len(articles))
 
-    print("🎯 Picking hottest...")
+    logger.info("Picking hottest article...")
     chosen = pick_hottest_news(articles)
 
     if not chosen:
         return {"error": "Selection failed"}
 
-    print(f"🔥 Selected: {chosen['title']}")
+    logger.info("Selected: %s", chosen['title'])
 
-    # 🎯 СОХРАНЯЕМ В БД — ПОСЛЕ выбора
     mark_news_shown(
         user_id=user_id,
-        url=chosen["url"],  # одна строка, не список
-        title=chosen.get("title")  # бонус — для дебага
+        url=chosen["url"],
+        title=chosen.get("title")
     )
-    print(f"💾 Помечено в БД")
+    logger.debug("Marked as shown in DB")
 
-    print("✍️ Generating posts...")
+    logger.info("Generating LinkedIn post...")
     variants = generate_linkedin_post(
         topic=chosen.get("title", ""),
         context=chosen.get("text", "")[:500]
