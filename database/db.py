@@ -6,19 +6,15 @@
 - Историю показанных новостей (чтобы не дублировать между запусками)
 """
 
+import os
 import sqlite3
 import json
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Optional
 
-
-# ============================================================
-# КОНФИГУРАЦИЯ
-# ============================================================
-from pathlib import Path
-
 PROJECT_ROOT = Path(__file__).parent.parent
-DB_PATH = str(PROJECT_ROOT / "personal_ai.db")
+DB_PATH = os.getenv("DB_PATH", str(PROJECT_ROOT / "personal_ai.db"))
 
 
 # ============================================================
