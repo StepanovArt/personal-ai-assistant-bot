@@ -97,11 +97,21 @@ def init_db() -> None:
         """)
 
         # --- Индекс для поиска юзера по telegram_id ---
-        # UNIQUE constraint автоматически создаёт индекс, но напишу явно для ясности
         conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_users_telegram
             ON users(telegram_id)
         """)
+
+        # --- Миграция: новые колонки в users (безопасно для существующих БД) ---
+        for col, definition in [
+            ("gmail_user",         "TEXT"),
+            ("gmail_app_password", "TEXT"),
+            ("is_onboarded",       "INTEGER NOT NULL DEFAULT 0"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
+            except Exception:
+                pass  # колонка уже существует
 
 
 # ============================================================
@@ -247,6 +257,58 @@ def cleanup_old_shown_news(days: int = 30) -> int:
             (f'-{days} days',)
         )
         return cursor.rowcount
+
+
+# ============================================================
+# ОНБОРДИНГ
+# ============================================================
+
+def is_user_onboarded(telegram_id: int) -> bool:
+    """Возвращает True если пользователь прошёл онбординг."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT is_onboarded FROM users WHERE telegram_id = ?",
+            (telegram_id,),
+        ).fetchone()
+        return bool(row and row["is_onboarded"])
+
+
+def update_user_email_credentials(
+    telegram_id: int, gmail_user: str, gmail_app_password: str
+) -> None:
+    """Сохраняет Gmail-кредентиалы пользователя."""
+    with get_db() as conn:
+        conn.execute(
+            """
+            UPDATE users
+            SET gmail_user = ?, gmail_app_password = ?, updated_at = datetime('now')
+            WHERE telegram_id = ?
+            """,
+            (gmail_user, gmail_app_password, telegram_id),
+        )
+
+
+def complete_onboarding(telegram_id: int) -> None:
+    """Помечает онбординг завершённым."""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE users SET is_onboarded = 1, updated_at = datetime('now') WHERE telegram_id = ?",
+            (telegram_id,),
+        )
+
+
+def get_user_email_credentials(telegram_id: int) -> tuple[str, str] | None:
+    """
+    Возвращает (gmail_user, gmail_app_password) или None если не заданы.
+    """
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT gmail_user, gmail_app_password FROM users WHERE telegram_id = ?",
+            (telegram_id,),
+        ).fetchone()
+        if row and row["gmail_user"] and row["gmail_app_password"]:
+            return row["gmail_user"], row["gmail_app_password"]
+        return None
 
 
 # ============================================================

@@ -1,38 +1,29 @@
-import imaplib
 import email
-from email.header import decode_header
-import os
-from dotenv import load_dotenv
-from datetime import datetime, timedelta
-from bs4 import BeautifulSoup
-from agents.llm import call_llm
+import imaplib
 import re
 import smtplib
-from email.mime.text import MIMEText
+from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
-# КОНФИГ
-load_dotenv()
-GMAIL_USER = os.getenv('GMAIL_USER')
-GMAIL_PASSWORD = os.getenv('GMAIL_APP_PASSWORD')
+from bs4 import BeautifulSoup
+
+from agents.llm import call_llm
+
 IMAP_SERVER = "imap.gmail.com"
-
 SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587  # TLS
+SMTP_PORT = 587
 
 
-# ОСНОВНОЙ ХЕЛПЕР
-def fetch_unread_emails(period: str) -> list[dict]:
+def fetch_unread_emails(period: str, gmail_user: str, gmail_password: str) -> list[dict]:
     """
     Получает непрочитанные письма из Gmail inbox за указанный период.
 
     Args:
-        period: строка вида "2d", "1h", "30m"
-
-    Returns:
-        список словарей: [{"from": ..., "subject": ..., "date": ..., "body": ...}, ...]
+        period: строка вида "1d", "1h", "12h"
+        gmail_user: адрес Gmail
+        gmail_password: Google App Password
     """
-    # 1 find start date
     now = datetime.now()
     value = int(period[:-1])
     unit = period[-1]
@@ -42,13 +33,11 @@ def fetch_unread_emails(period: str) -> list[dict]:
         since = (now - timedelta(hours=value)).strftime("%d-%b-%Y")
     else:
         raise TypeError('days and hours only(')
-    # 2 connect to the mail
+
     imap = imaplib.IMAP4_SSL(IMAP_SERVER, 993)
-    imap.login(GMAIL_USER, GMAIL_PASSWORD)
-    print("Connected!")
+    imap.login(gmail_user, gmail_password)
     imap.select('inbox')
 
-    # 3 find unreaded mails
     criteria = f'(UNSEEN SINCE "{since}")'
     status, message_ids = imap.search(None, criteria)
     msg_id = message_ids[0].split()
@@ -58,114 +47,38 @@ def fetch_unread_emails(period: str) -> list[dict]:
         status, data = imap.fetch(i, 'BODY.PEEK[]')
         raw_email = data[0][1]
         msg = email.message_from_bytes(raw_email)
-
         lst_of_letters.append({
             "Message_id": i.decode(),
-            "From": decode_mine_helper(msg.get('From')),
-            "Subject": decode_mine_helper(msg.get("Subject")),
+            "From": decode_mime_header(msg.get('From')),
+            "Subject": decode_mime_header(msg.get("Subject")),
             "Count_attachments": count_attachments(msg),
-            "Name_attachments": get_count_attachment_name(msg)})
+            "Name_attachments": get_attachment_names(msg),
+        })
 
     imap.close()
     imap.logout()
     return lst_of_letters
 
 
-def count_attachments(raw_file: str) -> int :
-    count = 0
-    for i in raw_file.walk():
-        if i.get_filename():
-            count += 1
-    if count > 0:
-        return count
-    return 0
-
-
-def get_count_attachment_name(raw_file: str) -> list[str]:
-    files = []
-    for i in raw_file.walk():
-        filename = i.get_filename()
-        if filename:
-            files.append(filename)
-    if len(files) > 0:
-        return files
-    return ""
-
-
-def decode_mine_helper(raw_helper: str) -> str:
-    """
-    Декодирует email header (тема может быть в UTF-8/Base64).
-    Пример: "=?UTF-8?B?0J/RgNC40LLQtdGCIQ==?=" → "Привет!"
-    """
-
-    parts = email.header.decode_header(raw_helper)
-    decodede_parts = ''
-    for part, encoding in parts:
-        if isinstance(part, bytes):
-            decodede_parts += part.decode(encoding or "utf-8")
-        else:
-            decodede_parts += part
-
-    return decodede_parts
-
-
-def extract_body(msg) -> str:  # Превращает структуру письма в чистый текст
-    if not msg.is_multipart():
-        payload = msg.get_payload(decode=True)
-        if payload:
-            charset = msg.get_content_charset()
-            return payload.decode(charset, errors='replace')
-        return ''
-    plain_text = ''
-    html_text = ''
-
-    for part in msg.walk():
-        content_type = part.get_content_type()
-        content_disposition = str(part.get("Content-Disposition", ""))
-
-        if "attachment" in content_disposition:
-            continue
-
-        payload = part.get_payload(decode=True)
-        if not payload:
-            continue
-
-        charset = part.get_content_charset() or 'utf-8'
-        decoded = payload.decode(charset, errors='replace')
-
-        if content_type == "text/plain":
-            plain_text = decoded
-            break  # нашли plain — больше не ищем
-        elif content_type == "text/html" and not html_text:
-            html_text = decoded
-
-    # ВОЗВРАТ — приоритет plain, иначе html → text
-    if plain_text:
-        return plain_text.strip()
-    if html_text:
-        soup = BeautifulSoup(html_text, 'html.parser')
-        return soup.get_text(separator='\n').strip()
-    return ''
-
-
-def fetch_email_body(message_id: str) -> str:  # Загружает текст ОДНОГО конкретного письма по его ID.
-    # 2 connect to the mail
+def fetch_email_body(message_id: str, gmail_user: str, gmail_password: str) -> str:
+    """Загружает тело одного письма по его ID."""
     imap = imaplib.IMAP4_SSL(IMAP_SERVER, 993)
-    imap.login(GMAIL_USER, GMAIL_PASSWORD)
-    print("Connected!")
+    imap.login(gmail_user, gmail_password)
     imap.select('inbox')
 
     status, data = imap.fetch(message_id.encode(), 'BODY.PEEK[]')
     raw_email = data[0][1]
     msg = email.message_from_bytes(raw_email)
     body = extract_body(msg)
+
     imap.close()
     imap.logout()
     return body
 
 
-def analyze_email(message_id: str) -> str:
-    text = fetch_email_body(message_id)
+def analyze_email(message_id: str, gmail_user: str, gmail_password: str) -> dict:
+    """Загружает письмо, делает саммари и генерирует черновик ответа."""
+    text = fetch_email_body(message_id, gmail_user, gmail_password)
     prompt = f"""
     Ты — профессиональный AI email-ассистент для Telegram-бота.
 
@@ -192,15 +105,8 @@ def analyze_email(message_id: str) -> str:
 
     === ДЛЯ DRAFT_REPLY ===
     - Ответ должен быть на ТОМ ЖЕ ЯЗЫКЕ, что и оригинальное письмо.
-    - Ответ должен быть:
-      - вежливым
-      - профессиональным
-      - кратким
-      - без лишней воды
-    - Если письмо не требует ответа (уведомление, рассылка, реклама и т.д.), напиши строго:
-      "ОТВЕТ НЕ НУЖЕН"
-    - Не выдумывай факты, которых нет в письме.
-    - Не добавляй лишних объяснений от себя.
+    - Ответ должен быть вежливым, профессиональным, кратким.
+    - Если письмо не требует ответа, напиши строго: "ОТВЕТ НЕ НУЖЕН"
 
     ПИСЬМО:
     \"\"\"
@@ -214,10 +120,6 @@ def analyze_email(message_id: str) -> str:
 
     DRAFT_REPLY:
     [черновик ответа здесь]
-
-    Никаких дополнительных комментариев.
-    Никаких пояснений.
-    Только указанный формат.
     """
 
     answer = call_llm(prompt)
@@ -226,78 +128,89 @@ def analyze_email(message_id: str) -> str:
         if "DRAFT_REPLY:" not in answer:
             return {"summary": answer, "draft_reply": "(не удалось сгенерировать ответ)"}
         parts = answer.split("DRAFT_REPLY:")
-        summary_part = parts[0].replace("SUMMARY:", "").strip()
-        reply_part = parts[1].strip()
-        return {"summary": summary_part, "draft_reply": reply_part,
-                }
-    except Exception as e:
         return {
-            "summary": "(ошибка парсинга ответа LLM)",
-            "draft_reply": "",
+            "summary": parts[0].replace("SUMMARY:", "").strip(),
+            "draft_reply": parts[1].strip(),
         }
+    except Exception:
+        return {"summary": "(ошибка парсинга ответа LLM)", "draft_reply": ""}
 
 
-
-def send_email(to: str, subject: str, body: str, in_reply_to: str = None) -> bool:
-    """
-    Отправляет email через Gmail SMTP.
-
-    Returns:
-        True если успешно, False если ошибка
-    """
+def send_email(
+    to: str, subject: str, body: str,
+    gmail_user: str, gmail_password: str,
+) -> bool:
+    """Отправляет email через Gmail SMTP. Возвращает True если успешно."""
     try:
-        # Создаём сообщение
         msg = MIMEMultipart()
-        msg['From'] = GMAIL_USER
+        msg['From'] = gmail_user
         msg['To'] = to
         msg['Subject'] = subject
-
-        # Добавляем тело (plain text)
         msg.attach(MIMEText(body, 'plain', 'utf-8'))
 
-        # Подключаемся к SMTP с TLS
         server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
         server.starttls()
-        server.login(GMAIL_USER, GMAIL_PASSWORD)
-
-        # Отправляем
+        server.login(gmail_user, gmail_password)
         server.send_message(msg)
         server.quit()
-
         return True
-
     except Exception as e:
         print(f"❌ Ошибка отправки: {e}")
         return False
 
 
-
-
 def extract_email_address(from_field: str) -> str:
-    """
-    Из 'Вася <vasya@gmail.com>' вытаскивает 'vasya@gmail.com'.
-    Если просто email — возвращает как есть.
-    """
+    """Из 'Вася <vasya@gmail.com>' вытаскивает 'vasya@gmail.com'."""
     match = re.search(r'<(.+?)>', from_field)
-    if match:
-        return match.group(1)
-    return from_field.strip()
+    return match.group(1) if match else from_field.strip()
 
 
-if __name__ == "__main__":
-    # ====== ТЕСТ send_email ======
-    print("\n" + "=" * 60)
-    print("📨 Тестирую отправку самому себе...")
-    print("=" * 60)
+# ── helpers ───────────────────────────────────────────────────────────────────
 
-    success = send_email(
-        to=GMAIL_USER,  # себе!
-        subject="Тест от моего бота",
-        body="Привет! Это тестовое письмо от EmailAgent.\n\nЕсли получил — значит SMTP работает 🎉"
-    )
+def decode_mime_header(raw: str) -> str:
+    parts = email.header.decode_header(raw or "")
+    result = ""
+    for part, encoding in parts:
+        if isinstance(part, bytes):
+            result += part.decode(encoding or "utf-8")
+        else:
+            result += part
+    return result
 
-    if success:
-        print("✅ Отправлено! Проверь свой инбокс через 10-30 секунд.")
-    else:
-        print("❌ Ошибка отправки.")
 
+def count_attachments(msg) -> int:
+    return sum(1 for part in msg.walk() if part.get_filename())
+
+
+def get_attachment_names(msg) -> list[str]:
+    return [part.get_filename() for part in msg.walk() if part.get_filename()]
+
+
+def extract_body(msg) -> str:
+    if not msg.is_multipart():
+        payload = msg.get_payload(decode=True)
+        if payload:
+            return payload.decode(msg.get_content_charset() or "utf-8", errors='replace')
+        return ''
+
+    plain_text = ''
+    html_text = ''
+    for part in msg.walk():
+        content_type = part.get_content_type()
+        if "attachment" in str(part.get("Content-Disposition", "")):
+            continue
+        payload = part.get_payload(decode=True)
+        if not payload:
+            continue
+        decoded = payload.decode(part.get_content_charset() or 'utf-8', errors='replace')
+        if content_type == "text/plain":
+            plain_text = decoded
+            break
+        elif content_type == "text/html" and not html_text:
+            html_text = decoded
+
+    if plain_text:
+        return plain_text.strip()
+    if html_text:
+        return BeautifulSoup(html_text, 'html.parser').get_text(separator='\n').strip()
+    return ''

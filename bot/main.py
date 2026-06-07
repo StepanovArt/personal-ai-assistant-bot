@@ -7,34 +7,29 @@ os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
 
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher
-from aiogram.filters import CommandStart
 from aiogram.types import Message
 
-from bot.keyboards import main_menu
-from bot.handlers import email, linkedin, expense
+from bot.handlers import email, linkedin, expense, onboarding
 from agents.manager import manager_respond
+from database.db import init_db
 
 load_dotenv()
 bot = Bot(token=os.getenv("TELEGRAM_BOT_TOKEN"))
 dp = Dispatcher()
 
 
-@dp.message(CommandStart())
-async def start(message: Message):
-    await message.answer("Привет! Я Варюха, твой ассистент. Чем помочь?",
-                         reply_markup=main_menu)
-
-
-async def chat_handler(message: Message):
+async def chat_handler(message: Message) -> None:
     answer = manager_respond(message.text)
     await message.answer(answer)
 
 
-async def main():
+async def main() -> None:
+    init_db()
+    dp.include_router(onboarding.router)  # первым — перехватывает /start
     dp.include_router(email.router)
     dp.include_router(linkedin.router)
     dp.include_router(expense.router)
-    dp.message.register(chat_handler)  # catch-all — регистрируем последним
+    dp.message.register(chat_handler)     # catch-all последним
     await dp.start_polling(bot)
 
 

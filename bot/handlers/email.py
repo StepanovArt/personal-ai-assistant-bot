@@ -7,6 +7,7 @@ from aiogram.fsm.context import FSMContext
 
 from bot.keyboards import email_actions, email_confirm, email_period_kb, main_menu
 from agents.email_agent import fetch_unread_emails, analyze_email, send_email, extract_email_address
+from database.db import get_user_email_credentials
 
 router = Router()
 
@@ -17,6 +18,16 @@ class EmailStates(StatesGroup):
     waiting_custom_reply = State()
 
 
+async def _get_credentials(telegram_id: int, message: Message) -> tuple[str, str] | None:
+    """Возвращает кредентиалы из БД или просит пройти онбординг."""
+    creds = get_user_email_credentials(telegram_id)
+    if not creds:
+        await message.answer(
+            "📭 Почта не привязана. Пройди настройку — напиши /start"
+        )
+    return creds
+
+
 @router.message(F.text == "📧 Почта")
 async def email_handler(message: Message):
     await message.answer("За какой период проверить почту?", reply_markup=email_period_kb)
@@ -24,34 +35,53 @@ async def email_handler(message: Message):
 
 @router.callback_query(F.data.startswith("period:"))
 async def process_period(callback: CallbackQuery, state: FSMContext):
+    creds = get_user_email_credentials(callback.from_user.id)
+    if not creds:
+        await callback.message.answer("📭 Почта не привязана. Пройди настройку — напиши /start")
+        await callback.answer()
+        return
+
+    gmail_user, gmail_password = creds
     period = callback.data.split(":")[1]
     await callback.message.answer(f"⏳ Получаю письма за {period}...")
-    letters = await asyncio.to_thread(fetch_unread_emails, period)
+
+    letters = await asyncio.to_thread(fetch_unread_emails, period, gmail_user, gmail_password)
     if not letters:
-        await callback.message.answer("📭Новых писем нет")
+        await callback.message.answer("📭 Новых писем нет")
         return
+
     await state.update_data(emails=letters)
     text = f"📬 Найдено {len(letters)} писем:\n\n"
     for i, em in enumerate(letters, 1):
         text += f"{i}. От: {em['From']}\n"
         text += f"   Тема: {em['Subject']}\n\n"
-    text += "💬 Команды: 'саммари N' или 'выход'"
+    text += "💬 Напиши номер письма или 'выход'"
     await callback.message.answer(text)
     await state.set_state(EmailStates.showing_list)
 
 
 @router.message(EmailStates.showing_list, F.text.regexp(r"^\d+$"))
 async def show_summary(message: Message, state: FSMContext):
+    creds = await _get_credentials(message.from_user.id, message)
+    if not creds:
+        return
+
+    gmail_user, gmail_password = creds
     n = int(message.text)
     data = await state.get_data()
     emails = data.get("emails", [])
+
     if n < 1 or n > len(emails):
         await message.answer(f"Письма {n} нет. Их всего {len(emails)}.")
         return
+
     target = emails[n - 1]
     await message.answer(f"⏳ Анализирую письмо #{n}...")
-    result = await asyncio.to_thread(analyze_email, target["Message_id"])
+    result = await asyncio.to_thread(
+        analyze_email, target["Message_id"], gmail_user, gmail_password
+    )
     await state.update_data(current_email=target, current_draft=result["draft_reply"])
+
     text = (
         f"📧 От: {target['From']}\n"
         f"📌 Тема: {target['Subject']}\n\n"
@@ -65,6 +95,12 @@ async def show_summary(message: Message, state: FSMContext):
 @router.callback_query(F.data == "email_send")
 async def send_draft(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    creds = get_user_email_credentials(callback.from_user.id)
+    if not creds:
+        await callback.message.answer("📭 Почта не привязана. Напиши /start")
+        return
+
+    gmail_user, gmail_password = creds
     try:
         data = await state.get_data()
         current_email = data["current_email"]
@@ -72,7 +108,9 @@ async def send_draft(callback: CallbackQuery, state: FSMContext):
         email_address = extract_email_address(current_email["From"])
         original_subject = current_email.get("Subject", "No Subject")
         subject = original_subject if original_subject.startswith("Re:") else "Re: " + original_subject
-        await asyncio.to_thread(send_email, to=email_address, subject=subject, body=current_draft)
+        await asyncio.to_thread(
+            send_email, email_address, subject, current_draft, gmail_user, gmail_password
+        )
         await callback.message.answer("✅ Отправлено!")
         await state.set_state(EmailStates.showing_list)
     except Exception as e:
@@ -111,5 +149,4 @@ async def skip_email(callback: CallbackQuery, state: FSMContext):
 @router.message(EmailStates.showing_list, F.text.lower() == "выход")
 async def exit_email(message: Message, state: FSMContext):
     await state.clear()
-    await message.answer("🚪 Вышли из режима почты")
-    await message.answer("🏠 Главное меню", reply_markup=main_menu)
+    await message.answer("🚪 Вышли из режима почты", reply_markup=main_menu)
