@@ -117,6 +117,18 @@ def test_extract_expense_synonym_category_normalized(monkeypatch):
     assert result["category"] == "кафе"
 
 
+def test_extract_expense_empty_llm_response_uses_fallback(monkeypatch):
+    monkeypatch.setattr("agents.expense_agent.call_llm", lambda _: "")
+
+    result = extract_expense("coffee 10 AED")
+    assert result["amount"] == 10.0
+
+
+def test_regex_fallback_amount_always_nonnegative():
+    result = _regex_fallback("some text without numbers")
+    assert result["amount"] >= 0.0
+
+
 def test_extract_expense_strips_markdown_fences(monkeypatch):
     payload = "```json\n" + json.dumps({
         "amount": 10.0, "currency": "AED",

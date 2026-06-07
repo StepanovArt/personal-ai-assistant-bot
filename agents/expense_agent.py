@@ -51,6 +51,7 @@ def _detect_currency(text: str) -> str:
 def _regex_fallback(text: str) -> dict:
     amount_match = re.search(r"\b(\d+(?:[.,]\d+)?)\b", text)
     amount = float(amount_match.group(1).replace(",", ".")) if amount_match else 0.0
+    amount = max(0.0, amount)
 
     lower = text.lower()
     category = "другое"
@@ -99,8 +100,9 @@ Rules:
 """
     try:
         raw = call_llm(prompt)
-        # Strip markdown code fences if model wraps in ```json
         clean = re.sub(r"```(?:json)?|```", "", raw).strip()
+        if not clean:
+            raise ValueError("LLM returned empty response")
         data = json.loads(clean)
 
         amount = float(data.get("amount", 0))
@@ -145,10 +147,13 @@ def get_monthly_summary(telegram_id: int) -> str:
         return "За последние 30 дней трат не найдено."
 
     month_name = datetime.now().strftime("%B %Y")
-    total = sum(r["total"] for r in rows)
-    currency = rows[0]["currency"]
 
-    lines = [f"📊 {month_name}\n", f"Всего: {total:.0f} {currency}\n", "По категориям:"]
+    totals_by_currency: dict[str, float] = {}
+    for r in rows:
+        totals_by_currency[r["currency"]] = totals_by_currency.get(r["currency"], 0) + r["total"]
+
+    total_lines = ", ".join(f"{v:.0f} {k}" for k, v in totals_by_currency.items())
+    lines = [f"📊 {month_name}\n", f"Total: {total_lines}\n", "By category:"]
     for row in rows:
         lines.append(f"  • {row['category']} — {row['total']:.0f} {row['currency']}")
 
