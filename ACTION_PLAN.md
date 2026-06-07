@@ -106,19 +106,60 @@ personal_ai/
 
 ---
 
-## Фаза 6 — Лёгкий фундамент (из PLAN.md Фаза 1)
+## Фаза 6 — Онбординг и безопасность
 
-### 6.1 Заменить `print` на `logging`
+### 6.1 БД: расширить таблицу `users`
+Добавить колонки (через `ALTER TABLE IF NOT EXISTS` — не ломает существующих записей):
+```
+gmail_user         TEXT   -- email пользователя
+gmail_app_password TEXT   -- Google App Password
+is_onboarded       INTEGER DEFAULT 0  -- 0 / 1
+```
+Новые функции в `db.py`:
+- `update_user_email_credentials(telegram_id, gmail_user, gmail_password)`
+- `is_user_onboarded(telegram_id) -> bool`
+
+### 6.2 Онбординг (`bot/handlers/onboarding.py`)
+FSM при первом `/start`:
+```
+/start → [новый юзер?]
+  да → "Привет! Введи интересы через запятую (напр. AI, стартапы)"
+     → сохранить interests в БД
+     → "Теперь введи свой Gmail адрес"
+     → сохранить gmail_user
+     → "Введи Google App Password (16 символов без пробелов)"
+     → сохранить gmail_app_password, is_onboarded=1
+     → показать main_menu
+  нет → сразу main_menu
+```
+
+### 6.3 Email агент: кредентиалы из БД, не из .env
+- `fetch_unread_emails(period, gmail_user, gmail_password)` — принимать как параметры
+- То же для `send_email`, `fetch_email_body`
+- `bot/handlers/email.py` — загружать кредентиалы из БД перед вызовом агента
+- Если не заполнены → «Сначала пройди настройку /start»
+
+### 6.4 Изоляция данных (проверка)
+- `shown_news` — уже фильтруется по `user_id` ✅
+- `expenses` (фаза 7) — будет фильтроваться по `user_id`
+- LinkedIn интересы — берутся из `users.interests` по `telegram_id` ✅
+- Нигде не должно быть запросов без `WHERE user_id = ?`
+
+---
+
+## Фаза 7 — Лёгкий фундамент (из PLAN.md Фаза 1)
+
+### 7.1 Заменить `print` на `logging`
 - Во всех агентах и хендлерах: `print(...)` → `logging.getLogger(__name__).info/warning/error(...)`
 - Настроить корневой логгер в `bot/main.py`
 
-### 6.2 Добавить `.env.example`
+### 7.2 Добавить `.env.example`
 - Создать `.env.example` с ключами без значений: `TELEGRAM_BOT_TOKEN=`, `ANTHROPIC_API_KEY=`, `GMAIL_USER=`, `GMAIL_APP_PASSWORD=`
 
-### 6.3 Тип-хинты и докстринги на публичных функциях
+### 7.3 Тип-хинты и докстринги на публичных функциях
 - Пройтись по `agents/` и `database/db.py` — добавить там где нет
 
-### 6.4 Manager → тонкий диспетчер
+### 7.4 Manager → тонкий диспетчер
 - `agents/manager.py` — убрать LLM из роутинга (роутинг уже идёт через кнопки)
 - Оставить `call_llm` только для режима свободного чата (fallback)
 - Статус: **частично сделано** — кнопки уже роутят напрямую, но проверить что менеджер не тянет лишнего
@@ -185,12 +226,44 @@ created_at  TEXT
 
 ---
 
+---
+
+## Тесты (сквозное требование, цель — 60-70% coverage)
+
+Тесты пишутся на pytest + `pytest-cov` для замера покрытия.
+
+```
+tests/
+├── test_expense_agent.py   # парсинг текста → JSON, кривые случаи
+├── test_expense_db.py      # запись/чтение/агрегации на in-memory SQLite
+├── test_db.py              # users, shown_news, filter_unseen_urls
+├── test_llm.py             # call_llm fallback: Claude упал → Ollama отработал
+└── test_trendwatcher.py    # deduplicate_node, normalize_title, build_google_news_url
+```
+
+**Приоритет 1 — бюджет-агент (блокирует фазу 7):**
+- Парсинг: «500 на такси» → `{amount: 500, category: "транспорт", description: "такси"}`
+- Кривые случаи: нет суммы, незнакомая категория, LLM вернул не JSON
+- Запись/чтение БД (in-memory SQLite, не трогает `personal_ai.db`)
+- Агрегации: сумма за период, топ категорий
+
+**Приоритет 2 — остальной код (до 60-70% total):**
+- `database/db.py`: get_or_create_user, filter_unseen_urls, mark_news_shown
+- `agents/llm.py`: call_llm fallback (mock Claude → exception → Ollama вызван)
+- `agents/trendwatcher.py`: deduplicate_node, normalize_title, build_google_news_url
+
+Запуск: `pytest --cov=. --cov-report=term-missing`
+
+---
+
 ## Порядок выполнения
 
 ```
-Фаза 6 (фундамент)   → logging, .env.example, тип-хинты
-Фаза 7 (расходы)     → главная фича, с тестами
-Фаза 8 (портфолио)   → README + polish
-Фаза 9 (ревью)       → после фазы 7
+Фаза 6 (онбординг)   → БД, FSM /start, email из БД, изоляция данных
+Фаза 7 (фундамент)   → logging, .env.example, тип-хинты
+Фаза 8 (расходы)     → главная фича + тесты приоритет 1
+Тесты приоритет 2    → параллельно с фазой 8 или сразу после
+Фаза 9 (портфолио)   → README + polish
+Фаза 10 (ревью)      → после фазы 8
 ```
 
