@@ -1,0 +1,11 @@
+langgraph
+langchain
+langchain-community
+ollama
+fastapi
+uvicorn
+python-telegram-bot
+feedparser
+requests
+python-dotenv
+apscheduler
