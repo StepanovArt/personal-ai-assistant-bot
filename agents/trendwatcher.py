@@ -171,7 +171,7 @@ def search_news_node(state):
 
             # Определяем язык запроса
             try:
-                lang = detect(query)
+                lang = langdetect.detect(query)
             except:
                 lang = "en"
 

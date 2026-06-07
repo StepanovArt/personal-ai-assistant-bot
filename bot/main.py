@@ -116,7 +116,7 @@ async def send_draft(callback: CallbackQuery, state: FSMContext):
         current_email = data["current_email"]
         current_draft = data["current_draft"]
         email_address = extract_email_address(current_email['From'])
-        original_subject = data.get("Subject", "No Subject")
+        original_subject = current_email.get("Subject", "No Subject")
         subject = original_subject if original_subject.startswith("Re:") else "Re: " + original_subject
         await asyncio.to_thread(send_email, to=email_address, subject=subject, body=current_draft)
         await callback.message.answer("✅ Отправлено!")
