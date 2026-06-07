@@ -79,11 +79,12 @@ personal_ai/
 
 ---
 
-## Фаза 3 — Рефакторинг структуры бота
+## ~~Фаза 3 — Рефакторинг структуры бота~~ ✅ DONE
 
-- Перенести хендлеры из `bot/main.py` в `bot/handlers.py` (файл сейчас пустой)
-- `bot/main.py` оставить только точкой входа (`main()` + регистрация роутеров)
-- Разбить по модулям: `handlers/email.py`, `handlers/linkedin.py`, `handlers/expense.py`
+- `bot/handlers/email.py` — email FSM + хендлеры
+- `bot/handlers/linkedin.py` — LinkedIn FSM + хендлеры
+- `bot/handlers/expense.py` — Expense FSM + хендлеры
+- `bot/main.py` — только точка входа: регистрирует роутеры, catch-all последним
 
 ---
 
