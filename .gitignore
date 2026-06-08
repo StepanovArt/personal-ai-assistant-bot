@@ -12,6 +12,8 @@ env/
 
 # Environment variables (secrets)
 .env
+client_secret*.json
+token*.json
 
 # Database (local state, not for repo)
 *.db

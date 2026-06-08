@@ -9,49 +9,47 @@ class CB:
 
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="Пост в LinkedIn")],
-        [KeyboardButton(text="📧 Почта"), KeyboardButton(text="Записать трату")],
+        [KeyboardButton(text="LinkedIn Post")],
+        [KeyboardButton(text="📧 Email"), KeyboardButton(text="Log Expense")],
     ],
     resize_keyboard=True
 )
 
 li_actions = InlineKeyboardMarkup(inline_keyboard=[
     [
-        InlineKeyboardButton(text="Нравится", callback_data=CB.LI_LIKE),
-        InlineKeyboardButton(text="Переделать", callback_data=CB.LI_REDO),
+        InlineKeyboardButton(text="Like", callback_data=CB.LI_LIKE),
+        InlineKeyboardButton(text="Redo", callback_data=CB.LI_REDO),
     ]
 ])
 
 expense_saved_kb = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="📊 Итого за месяц", callback_data=CB.EXPENSE_STATS)]
+    [InlineKeyboardButton(text="📊 Monthly Summary", callback_data=CB.EXPENSE_STATS)]
 ])
-
-# ── email (untouched) ──────────────────────────────────────────────────────────
 
 email_actions = InlineKeyboardMarkup(inline_keyboard=[
     [
-        InlineKeyboardButton(text="✅ Отправить", callback_data="email_send"),
-        InlineKeyboardButton(text="✏️ Изменить", callback_data="email_edit"),
+        InlineKeyboardButton(text="✅ Send", callback_data="email_send"),
+        InlineKeyboardButton(text="✏️ Edit", callback_data="email_edit"),
     ],
     [
-        InlineKeyboardButton(text="❌ Не отвечать", callback_data="email_skip"),
+        InlineKeyboardButton(text="❌ Skip", callback_data="email_skip"),
     ]
 ])
 
 email_confirm = InlineKeyboardMarkup(inline_keyboard=[
     [
-        InlineKeyboardButton(text="✅ Отправить", callback_data="email_send"),
-        InlineKeyboardButton(text="❌ Отмена", callback_data="email_skip"),
+        InlineKeyboardButton(text="✅ Send", callback_data="email_send"),
+        InlineKeyboardButton(text="❌ Cancel", callback_data="email_skip"),
     ]
 ])
 
 email_period_kb = InlineKeyboardMarkup(inline_keyboard=[
     [
-        InlineKeyboardButton(text="🕐 1 час", callback_data="period:1h"),
-        InlineKeyboardButton(text="🕒 3 часа", callback_data="period:3h"),
+        InlineKeyboardButton(text="🕐 1 hour", callback_data="period:1h"),
+        InlineKeyboardButton(text="🕒 3 hours", callback_data="period:3h"),
     ],
     [
-        InlineKeyboardButton(text="🌅 12 часов", callback_data="period:12h"),
-        InlineKeyboardButton(text="📅 1 день", callback_data="period:1d"),
+        InlineKeyboardButton(text="🌅 12 hours", callback_data="period:12h"),
+        InlineKeyboardButton(text="📅 1 day", callback_data="period:1d"),
     ]
 ])

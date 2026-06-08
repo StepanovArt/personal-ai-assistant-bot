@@ -10,3 +10,6 @@ langdetect==1.0.9
 googlenewsdecoder==0.1.7
 beautifulsoup4==4.12.3
 certifi==2026.2.25
+google-auth-oauthlib==1.2.1
+google-api-python-client==2.165.0
+google-auth-httplib2==0.2.0

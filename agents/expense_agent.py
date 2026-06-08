@@ -84,19 +84,28 @@ You are an expense parser. Extract structured data from the user's message.
 
 User message: "{text}"
 
+Pick the best category:
+- еда: groceries, food at home, supermarket, toast, sandwich, snacks, drinks
+- кафе: cafe, restaurant, coffee shop, eating out, takeaway order
+- транспорт: taxi, uber, bus, metro, fuel, parking
+- покупки: clothes, shoes, electronics, household items
+- развлечения: cinema, games, events, concerts, sports
+- здоровье: pharmacy, doctor visit, medicine, gym
+- жильё: rent, utilities, internet, housing
+- другое: anything that doesn't fit above
+
 Return ONLY valid JSON, no extra text:
 {{
   "amount": <number>,
   "currency": "<3-letter code, e.g. AED, RUB, USD>",
   "category": "<one of: еда, транспорт, кафе, покупки, развлечения, здоровье, жильё, другое>",
-  "description": "<short description in the same language as the input>"
+  "description": "<short description in the same language as the input, 3-6 words>"
 }}
 
 Rules:
 - amount must be a positive number
 - if currency is unclear, use AED
-- category must be exactly one from the list
-- description: 3-6 words max
+- category must be exactly one from the list above
 """
     try:
         raw = call_llm(prompt)

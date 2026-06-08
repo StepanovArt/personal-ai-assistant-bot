@@ -16,7 +16,7 @@ class ExpenseStates(StatesGroup):
     waiting_text = State()
 
 
-@router.message(F.text == "Записать трату")
+@router.message(F.text == "Log Expense")
 async def expense_handler(message: Message, state: FSMContext) -> None:
     await state.set_state(ExpenseStates.waiting_text)
     await message.answer("Что записать? Например: банка колы 3 дирхама")

@@ -121,6 +121,7 @@ def init_db() -> None:
             ("gmail_user",         "TEXT"),
             ("gmail_app_password", "TEXT"),
             ("is_onboarded",       "INTEGER NOT NULL DEFAULT 0"),
+            ("oauth_token",        "TEXT"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
@@ -370,6 +371,34 @@ def get_user_email_credentials(telegram_id: int) -> tuple[str, str] | None:
         ).fetchone()
         if row and row["gmail_user"] and row["gmail_app_password"]:
             return row["gmail_user"], row["gmail_app_password"]
+        return None
+
+
+def save_oauth_token(telegram_id: int, token_json: str, gmail_user: str = "") -> None:
+    """Saves OAuth token JSON for a user, optionally updating gmail_user."""
+    with get_db() as conn:
+        if gmail_user:
+            conn.execute(
+                """UPDATE users SET oauth_token = ?, gmail_user = ?, updated_at = datetime('now')
+                   WHERE telegram_id = ?""",
+                (token_json, gmail_user, telegram_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE users SET oauth_token = ?, updated_at = datetime('now') WHERE telegram_id = ?",
+                (token_json, telegram_id),
+            )
+
+
+def get_oauth_token(telegram_id: int) -> str | None:
+    """Returns OAuth token JSON string or None if not set."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT oauth_token FROM users WHERE telegram_id = ?",
+            (telegram_id,),
+        ).fetchone()
+        if row and row["oauth_token"]:
+            return row["oauth_token"]
         return None
 
 

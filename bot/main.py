@@ -13,7 +13,7 @@ logging.basicConfig(
 )
 
 from dotenv import load_dotenv
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, Router
 from aiogram.types import Message
 
 from bot.handlers import email, linkedin, expense, onboarding
@@ -24,7 +24,9 @@ load_dotenv()
 bot = Bot(token=os.getenv("TELEGRAM_BOT_TOKEN"))
 dp = Dispatcher()
 
+fallback_router = Router()
 
+@fallback_router.message()
 async def chat_handler(message: Message) -> None:
     answer = manager_respond(message.text)
     await message.answer(answer)
@@ -32,11 +34,11 @@ async def chat_handler(message: Message) -> None:
 
 async def main() -> None:
     init_db()
-    dp.include_router(onboarding.router)  # первым — перехватывает /start
+    dp.include_router(onboarding.router)
     dp.include_router(email.router)
     dp.include_router(linkedin.router)
     dp.include_router(expense.router)
-    dp.message.register(chat_handler)     # catch-all последним
+    dp.include_router(fallback_router)   # catch-all last
     await dp.start_polling(bot)
 
 

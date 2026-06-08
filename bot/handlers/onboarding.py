@@ -1,3 +1,5 @@
+import asyncio
+
 from aiogram import Router
 from aiogram.filters import CommandStart
 from aiogram.types import Message
@@ -8,18 +10,16 @@ from bot.keyboards import main_menu
 from database.db import (
     get_or_create_user,
     is_user_onboarded,
-    update_user_interests,
-    update_user_email_credentials,
+    save_oauth_token,
     complete_onboarding,
 )
+from agents.gmail_oauth import get_auth_url, exchange_code, get_service, get_gmail_address
 
 router = Router()
 
 
 class OnboardingStates(StatesGroup):
-    waiting_interests = State()
-    waiting_gmail = State()
-    waiting_gmail_password = State()
+    waiting_oauth_code = State()
 
 
 @router.message(CommandStart())
@@ -28,71 +28,54 @@ async def start(message: Message, state: FSMContext):
     get_or_create_user(telegram_id, [])
 
     if is_user_onboarded(telegram_id):
-        await message.answer("С возвращением! Чем помочь?", reply_markup=main_menu)
+        await message.answer("Welcome back! What can I help with?", reply_markup=main_menu)
         return
 
-    await state.set_state(OnboardingStates.waiting_interests)
+    auth_url, code_verifier = get_auth_url()
+    await state.update_data(code_verifier=code_verifier)
+    await state.set_state(OnboardingStates.waiting_oauth_code)
     await message.answer(
-        "Привет! Я Варюха, твой AI-ассистент.\n\n"
-        "Давай настроим всё за 3 шага.\n\n"
-        "1️⃣ Введи свои интересы через запятую:\n"
-        "Например: AI, стартапы, финтех, крипто"
+        "Hi! I'm your personal AI assistant.\n\n"
+        "Connect your Gmail to get started:\n\n"
+        f"{auth_url}\n\n"
+        "👆 Open the link, authorize with Google.\n"
+        "Your browser will try to open localhost — that's OK, it will fail.\n"
+        "Copy the full URL from the browser address bar and paste it here."
     )
 
 
-@router.message(OnboardingStates.waiting_interests)
-async def save_interests(message: Message, state: FSMContext):
-    interests = [i.strip() for i in message.text.split(",") if i.strip()]
-    if not interests:
-        await message.answer("Введи хотя бы один интерес, например: AI")
-        return
+@router.message(OnboardingStates.waiting_oauth_code)
+async def save_oauth(message: Message, state: FSMContext):
+    raw = message.text.strip()
+    data = await state.get_data()
+    code_verifier = data.get("code_verifier", "")
 
-    update_user_interests(message.from_user.id, interests)
-    await state.update_data(interests=interests)
-    await state.set_state(OnboardingStates.waiting_gmail)
-    await message.answer(
-        f"✅ Сохранил интересы: {', '.join(interests)}\n\n"
-        "2️⃣ Введи свой Gmail адрес:"
-    )
+    await message.answer("⏳ Verifying with Google...")
 
+    def _setup(code_or_url: str, verifier: str) -> tuple[str, str]:
+        token_json = exchange_code(code_or_url, verifier)
+        service, token_json = get_service(token_json)
+        address = get_gmail_address(service)
+        return token_json, address
 
-@router.message(OnboardingStates.waiting_gmail)
-async def save_gmail(message: Message, state: FSMContext):
-    gmail = message.text.strip().lower()
-    if "@" not in gmail or not gmail.endswith("gmail.com"):
-        await message.answer("Похоже это не Gmail адрес. Введи адрес вида name@gmail.com")
-        return
-
-    await state.update_data(gmail_user=gmail)
-    await state.set_state(OnboardingStates.waiting_gmail_password)
-    await message.answer(
-        f"✅ Gmail: {gmail}\n\n"
-        "3️⃣ Введи Google App Password (16 символов без пробелов).\n\n"
-        "Где взять: myaccount.google.com → Безопасность → Пароли приложений"
-    )
-
-
-@router.message(OnboardingStates.waiting_gmail_password)
-async def save_gmail_password(message: Message, state: FSMContext):
-    password = message.text.strip().replace(" ", "")
-    if len(password) != 16:
+    try:
+        token_json, gmail_address = await asyncio.to_thread(_setup, raw, code_verifier)
+    except Exception as e:
         await message.answer(
-            f"App Password должен быть 16 символов, у тебя {len(password)}. Попробуй ещё раз:"
+            f"❌ Authorization failed: {e}\n\n"
+            "Make sure you copied the full URL from the browser after authorizing. Try again:"
         )
         return
 
-    data = await state.get_data()
-    gmail_user = data["gmail_user"]
-
-    update_user_email_credentials(message.from_user.id, gmail_user, password)
+    save_oauth_token(message.from_user.id, token_json, gmail_address)
     complete_onboarding(message.from_user.id)
     await state.clear()
 
     await message.answer(
-        "✅ Всё готово! Настройка завершена.\n\n"
-        "Что умею:\n"
-        "• Пост в LinkedIn — нахожу свежие новости и пишу пост\n"
-        "• Почта — читаю, анализирую, помогаю ответить\n"
-        "• Записать трату — веду учёт расходов",
+        f"✅ All set! Gmail connected: {gmail_address}\n\n"
+        "What I can do:\n"
+        "• LinkedIn Post — find trending news and write a ready-to-publish post\n"
+        "• 📧 Email — read, summarise, and help you reply\n"
+        "• Log Expense — track your spending",
         reply_markup=main_menu,
     )
