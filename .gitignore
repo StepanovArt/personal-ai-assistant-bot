@@ -14,6 +14,7 @@ env/
 .env
 client_secret*.json
 token*.json
+credentials.json
 
 # Database (local state, not for repo)
 *.db

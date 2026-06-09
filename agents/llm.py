@@ -18,10 +18,11 @@ OLLAMA_MODEL = "llama3.1"
 CLAUDE_MODEL = "claude-haiku-4-5-20251001"
 MIN_ARTICLE_LENGTH = 200
 
+_claude_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
 
 def call_claude(prompt: str) -> str:
-    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-    message = client.messages.create(
+    message = _claude_client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=1024,
         messages=[{"role": "user", "content": prompt}],

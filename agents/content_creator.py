@@ -167,14 +167,7 @@ def generate_linkedin_post(topic: str, context: str = "") -> dict:
     logger.info("Calling LLM for post generation...")
     answer = call_llm(prompt)
     logger.info("LLM responded: %d chars", len(answer))
-    try:
-        return json.loads(answer)
-    except Exception:
-        return {
-            "story": answer,
-            "educational": "",
-            "opinion": ""
-        }
+    return {"story": answer}
 
 
 def mark_article_as_used(telegram_id: int, article_url: str, article_title: str):
