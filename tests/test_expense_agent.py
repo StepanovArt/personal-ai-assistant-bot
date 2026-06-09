@@ -22,7 +22,7 @@ def test_normalize_synonym():
     assert _normalize_category("pharmacy") == "health"
 
 
-def test_normalize_unknown_falls_back_to_другое():
+def test_normalize_unknown_falls_back_to_other():
     assert _normalize_category("космос") == "other"
 
 

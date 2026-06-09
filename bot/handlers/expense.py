@@ -19,7 +19,7 @@ class ExpenseStates(StatesGroup):
 @router.message(F.text == "Log Expense")
 async def expense_handler(message: Message, state: FSMContext) -> None:
     await state.set_state(ExpenseStates.waiting_text)
-    await message.answer("Что записать? Например: банка колы 3 дирхама")
+    await message.answer("What to log? Example: coffee 15 AED")
 
 
 @router.message(ExpenseStates.waiting_text)
@@ -31,14 +31,14 @@ async def process_expense(message: Message, state: FSMContext) -> None:
     try:
         result = save_expense(telegram_id, text)
         reply = (
-            f"✅ Записал!\n\n"
+            f"✅ Saved!\n\n"
             f"💰 {result['amount']:.0f} {result['currency']} — {result['category']}\n"
             f"📝 {result['description']}"
         )
         await message.answer(reply, reply_markup=expense_saved_kb)
     except Exception as e:
         logger.error("Expense save failed for user %s: %s", telegram_id, e)
-        await message.answer("Не удалось записать трату, попробуй ещё раз.", reply_markup=main_menu)
+        await message.answer("Failed to save expense, please try again.", reply_markup=main_menu)
 
 
 @router.callback_query(F.data == CB.EXPENSE_STATS)

@@ -1,9 +1,9 @@
 """
-База данных для TrendWatcher Agent.
+Database layer for the personal AI assistant.
 
-Хранит:
-- Пользователей и их интересы
-- Историю показанных новостей (чтобы не дублировать между запусками)
+Stores:
+- Users and their interests
+- History of shown news articles (to avoid duplicates across runs)
 """
 
 import os
@@ -18,29 +18,29 @@ DB_PATH = os.getenv("DB_PATH", str(PROJECT_ROOT / "personal_ai.db"))
 
 
 # ============================================================
-# CONTEXT MANAGER ДЛЯ СОЕДИНЕНИЙ
+# CONNECTION CONTEXT MANAGER
 # ============================================================
 @contextmanager
 def get_db():
     """
-    Контекстный менеджер для работы с БД.
+    Context manager for database connections.
 
-    Автоматически:
-    - Открывает соединение
-    - Включает foreign keys
-    - Коммитит транзакцию при успехе
-    - Откатывает при ошибке
-    - Закрывает соединение в любом случае
+    Automatically:
+    - Opens a connection
+    - Enables foreign keys
+    - Commits on success
+    - Rolls back on error
+    - Closes the connection in all cases
 
-    Использование:
+    Usage:
         with get_db() as conn:
             conn.execute("INSERT ...")
-            # commit произойдёт автоматически
+            # commit happens automatically
     """
     conn = sqlite3.connect(DB_PATH)
-    # row_factory позволяет обращаться к колонкам по имени: row["name"] вместо row[1]
+    # row_factory allows column access by name: row["name"] instead of row[1]
     conn.row_factory = sqlite3.Row
-    # Включаем проверку foreign keys (по умолчанию ВЫКЛЮЧЕНО в SQLite)
+    # Enable foreign key checks (disabled by default in SQLite)
     conn.execute("PRAGMA foreign_keys = ON")
     try:
         yield conn
@@ -53,15 +53,12 @@ def get_db():
 
 
 # ============================================================
-# ИНИЦИАЛИЗАЦИЯ СХЕМЫ
+# SCHEMA INITIALISATION
 # ============================================================
 def init_db() -> None:
-    """
-    Создаёт таблицы и индексы, если их ещё нет.
-    Безопасно запускать многократно.
-    """
+    """Creates tables and indexes if they don't exist. Safe to run multiple times."""
     with get_db() as conn:
-        # --- Таблица пользователей ---
+        # --- Users table ---
         conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,8 +69,8 @@ def init_db() -> None:
             )
         """)
 
-        # --- Таблица показанных новостей ---
-        # ON DELETE CASCADE: если удалим юзера — его история сама удалится
+        # --- Shown news table ---
+        # ON DELETE CASCADE: deleting a user also deletes their news history
         conn.execute("""
             CREATE TABLE IF NOT EXISTS shown_news (
                 id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,20 +82,20 @@ def init_db() -> None:
             )
         """)
 
-        # --- Индекс для быстрой проверки "показывали ли эту новость" ---
-        # Составной индекс работает для запросов WHERE user_id = ? AND url = ?
+        # --- Index for fast "was this article shown?" lookups ---
+        # Composite index covers WHERE user_id = ? AND url = ?
         conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_shown_news_user_url
             ON shown_news(user_id, url)
         """)
 
-        # --- Индекс для поиска юзера по telegram_id ---
+        # --- Index for user lookup by telegram_id ---
         conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_users_telegram
             ON users(telegram_id)
         """)
 
-        # --- Таблица расходов ---
+        # --- Expenses table ---
         conn.execute("""
             CREATE TABLE IF NOT EXISTS expenses (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -116,7 +113,7 @@ def init_db() -> None:
             ON expenses(user_id, created_at)
         """)
 
-        # --- Миграция: новые колонки в users (безопасно для существующих БД) ---
+        # --- Migration: add new columns to users (safe for existing DBs) ---
         for col, definition in [
             ("gmail_user",         "TEXT"),
             ("gmail_app_password", "TEXT"),
@@ -126,17 +123,14 @@ def init_db() -> None:
             try:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
             except Exception:
-                pass  # колонка уже существует
+                pass  # column already exists
 
 
 # ============================================================
-# ОПЕРАЦИИ С ПОЛЬЗОВАТЕЛЯМИ
+# USER OPERATIONS
 # ============================================================
 def get_user(telegram_id: int) -> Optional[dict]:
-    """
-    Возвращает пользователя по telegram_id или None, если не найден.
-    Интересы автоматически парсятся из JSON в список.
-    """
+    """Returns user by telegram_id or None if not found. Interests are parsed from JSON."""
     with get_db() as conn:
         row = conn.execute(
             "SELECT * FROM users WHERE telegram_id = ?",
@@ -146,20 +140,14 @@ def get_user(telegram_id: int) -> Optional[dict]:
         if row is None:
             return None
 
-        # Превращаем sqlite3.Row в обычный dict + парсим JSON интересов
+        # Convert sqlite3.Row to plain dict and parse JSON interests
         user = dict(row)
         user["interests"] = json.loads(user["interests"])
         return user
 
 
 def add_user(telegram_id: int, interests: list[str]) -> int:
-    """
-    Создаёт нового пользователя.
-    Возвращает его внутренний id.
-
-    Если пользователь с таким telegram_id уже существует — выбросит IntegrityError.
-    Используй get_or_create_user, если не уверен.
-    """
+    """Creates a new user and returns their internal id. Raises IntegrityError if telegram_id already exists."""
     with get_db() as conn:
         cursor = conn.execute(
             "INSERT INTO users (telegram_id, interests) VALUES (?, ?)",
@@ -169,26 +157,17 @@ def add_user(telegram_id: int, interests: list[str]) -> int:
 
 
 def get_or_create_user(telegram_id: int, interests: list[str]) -> dict:
-    """
-    Возвращает существующего юзера или создаёт нового.
-    Атомарная операция — безопасна при гонках (например, два сообщения сразу).
-
-    Это правильный способ "входа" в систему через Telegram.
-    """
+    """Returns existing user or creates a new one. Safe entry point for all Telegram interactions."""
     existing = get_user(telegram_id)
     if existing is not None:
         return existing
 
     add_user(telegram_id, interests)
-    # Возвращаем созданного юзера через get_user, чтобы получить полные поля
     return get_user(telegram_id)
 
 
 def update_user_interests(telegram_id: int, new_interests: list[str]) -> bool:
-    """
-    Обновляет интересы пользователя.
-    Возвращает True, если юзер найден и обновлён, False — если юзера нет.
-    """
+    """Updates user interests. Returns True if user was found and updated, False otherwise."""
     with get_db() as conn:
         cursor = conn.execute(
             """
@@ -198,15 +177,15 @@ def update_user_interests(telegram_id: int, new_interests: list[str]) -> bool:
             """,
             (json.dumps(new_interests, ensure_ascii=False), telegram_id)
         )
-        # rowcount = сколько строк было затронуто. 0 = юзера не было.
+        # rowcount = number of rows affected; 0 means user not found
         return cursor.rowcount > 0
 
 
 # ============================================================
-# ОПЕРАЦИИ С ПОКАЗАННЫМИ НОВОСТЯМИ
+# SHOWN NEWS OPERATIONS
 # ============================================================
 def is_news_shown(user_id: int, url: str) -> bool:
-    """Проверяет, показывали ли уже эту новость данному юзеру."""
+    """Returns True if this article has already been shown to the user."""
     with get_db() as conn:
         row = conn.execute(
             "SELECT 1 FROM shown_news WHERE user_id = ? AND url = ? LIMIT 1",
@@ -216,10 +195,7 @@ def is_news_shown(user_id: int, url: str) -> bool:
 
 
 def mark_news_shown(user_id: int, url: str, title: Optional[str] = None) -> None:
-    """
-    Помечает новость как показанную пользователю.
-    title опционален — полезен для дебага и аналитики.
-    """
+    """Marks an article as shown to the user. title is optional, useful for debugging."""
     with get_db() as conn:
         conn.execute(
             """
@@ -232,37 +208,28 @@ def mark_news_shown(user_id: int, url: str, title: Optional[str] = None) -> None
 
 def filter_unseen_urls(user_id: int, urls: list[str]) -> set[str]:
     """
-    Возвращает множество URL'ов, которые ещё НЕ показывались юзеру.
+    Returns the subset of URLs not yet shown to the user.
 
-    Это оптимизация: вместо N запросов к БД (по одному на каждый URL)
-    делаем ОДИН запрос со списком. Критично для скорости при 50+ новостях.
+    Uses a single IN query instead of N individual lookups — critical for performance at 50+ articles.
     """
     if not urls:
         return set()
 
     with get_db() as conn:
-        # Динамически генерируем placeholders: ?, ?, ?, ...
+        # Dynamically build placeholders: ?, ?, ?, ...
         placeholders = ",".join("?" * len(urls))
         query = f"""
             SELECT url FROM shown_news
             WHERE user_id = ? AND url IN ({placeholders})
         """
-        # Параметры: сначала user_id, потом распакованный список urls
         seen_rows = conn.execute(query, (user_id, *urls)).fetchall()
         seen_urls = {row["url"] for row in seen_rows}
 
-        # Возвращаем разность: все URL минус те, что уже видели
         return set(urls) - seen_urls
 
 
 def cleanup_old_shown_news(days: int = 30) -> int:
-    """
-    Удаляет записи о показанных новостях старше N дней.
-    Защищает БД от бесконечного роста.
-
-    Запускай раз в сутки или раз в неделю.
-    Возвращает количество удалённых записей.
-    """
+    """Deletes shown_news records older than N days. Run daily or weekly to prevent unbounded growth."""
     with get_db() as conn:
         cursor = conn.execute(
             """
@@ -275,12 +242,12 @@ def cleanup_old_shown_news(days: int = 30) -> int:
 
 
 # ============================================================
-# ОПЕРАЦИИ С РАСХОДАМИ
+# EXPENSE OPERATIONS
 # ============================================================
 def add_expense(
     user_id: int, amount: float, currency: str, category: str, description: str
 ) -> int:
-    """Сохраняет трату и возвращает её id."""
+    """Saves an expense and returns its id."""
     with get_db() as conn:
         cursor = conn.execute(
             """
@@ -293,7 +260,7 @@ def add_expense(
 
 
 def get_expenses(user_id: int, days: int = 30) -> list[dict]:
-    """Возвращает расходы пользователя за последние N дней."""
+    """Returns the user's expenses for the last N days."""
     with get_db() as conn:
         rows = conn.execute(
             """
@@ -307,7 +274,7 @@ def get_expenses(user_id: int, days: int = 30) -> list[dict]:
 
 
 def get_total_by_category(user_id: int, days: int = 30) -> list[dict]:
-    """Возвращает сумму трат по категориям за последние N дней, убывая."""
+    """Returns total spending per category for the last N days, ordered descending."""
     with get_db() as conn:
         rows = conn.execute(
             """
@@ -323,11 +290,11 @@ def get_total_by_category(user_id: int, days: int = 30) -> list[dict]:
 
 
 # ============================================================
-# ОНБОРДИНГ
+# ONBOARDING
 # ============================================================
 
 def is_user_onboarded(telegram_id: int) -> bool:
-    """Возвращает True если пользователь прошёл онбординг."""
+    """Returns True if the user has completed onboarding."""
     with get_db() as conn:
         row = conn.execute(
             "SELECT is_onboarded FROM users WHERE telegram_id = ?",
@@ -339,7 +306,7 @@ def is_user_onboarded(telegram_id: int) -> bool:
 def update_user_email_credentials(
     telegram_id: int, gmail_user: str, gmail_app_password: str
 ) -> None:
-    """Сохраняет Gmail-кредентиалы пользователя."""
+    """Saves Gmail credentials for a user."""
     with get_db() as conn:
         conn.execute(
             """
@@ -352,7 +319,7 @@ def update_user_email_credentials(
 
 
 def complete_onboarding(telegram_id: int) -> None:
-    """Помечает онбординг завершённым."""
+    """Marks onboarding as completed for the user."""
     with get_db() as conn:
         conn.execute(
             "UPDATE users SET is_onboarded = 1, updated_at = datetime('now') WHERE telegram_id = ?",
@@ -361,9 +328,7 @@ def complete_onboarding(telegram_id: int) -> None:
 
 
 def get_user_email_credentials(telegram_id: int) -> tuple[str, str] | None:
-    """
-    Возвращает (gmail_user, gmail_app_password) или None если не заданы.
-    """
+    """Returns (gmail_user, gmail_app_password) or None if not set."""
     with get_db() as conn:
         row = conn.execute(
             "SELECT gmail_user, gmail_app_password FROM users WHERE telegram_id = ?",
@@ -403,23 +368,17 @@ def get_oauth_token(telegram_id: int) -> str | None:
 
 
 # ============================================================
-# ТОЧКА ВХОДА ДЛЯ САМОПРОВЕРКИ
+# SELF-CHECK ENTRY POINT
 # ============================================================
 if __name__ == "__main__":
-    # Запусти этот файл напрямую, чтобы создать БД и проверить,
-    # что всё работает: python database.py
     init_db()
-    print("✅ БД инициализирована")
+    print("✅ DB initialised")
 
-    # Мини-тест
-    user = get_or_create_user(
-        telegram_id=12345,
-        interests=["AI", "стартапы"]
-    )
-    print(f"✅ Юзер создан/найден: {user}")
+    user = get_or_create_user(telegram_id=12345, interests=["AI", "startups"])
+    print(f"✅ User created/found: {user}")
 
     if not is_news_shown(user["id"], "https://example.com/test"):
         mark_news_shown(user["id"], "https://example.com/test", "Test Article")
-        print("✅ Новость помечена показанной")
+        print("✅ Article marked as shown")
 
-    print(f"✅ Проверка повтора: {is_news_shown(user['id'], 'https://example.com/test')}")
+    print(f"✅ Duplicate check: {is_news_shown(user['id'], 'https://example.com/test')}")
