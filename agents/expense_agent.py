@@ -8,23 +8,23 @@ from database.db import add_expense, get_or_create_user, get_total_by_category
 
 logger = logging.getLogger(__name__)
 
-CATEGORIES = ["еда", "транспорт", "кафе", "покупки", "развлечения", "здоровье", "жильё", "другое"]
+CATEGORIES = ["food", "transport", "cafe", "shopping", "entertainment", "health", "housing", "other"]
 
 SYNONYMS: dict[str, str] = {
-    "продукты": "еда", "супермаркет": "еда", "магазин": "еда",
-    "ресторан": "кафе", "кофе": "кафе", "кафешка": "кафе",
-    "такси": "транспорт", "метро": "транспорт", "автобус": "транспорт", "uber": "транспорт",
-    "одежда": "покупки", "обувь": "покупки",
-    "кино": "развлечения", "игры": "развлечения",
-    "аренда": "жильё", "квартира": "жильё",
-    "аптека": "здоровье", "врач": "здоровье",
+    "groceries": "food", "supermarket": "food", "store": "food",
+    "restaurant": "cafe", "coffee": "cafe", "coffee shop": "cafe",
+    "taxi": "transport", "metro": "transport", "bus": "transport", "uber": "transport",
+    "clothes": "shopping", "shoes": "shopping",
+    "cinema": "entertainment", "games": "entertainment",
+    "rent": "housing", "apartment": "housing",
+    "pharmacy": "health", "doctor": "health",
 }
 
 CURRENCY_ALIASES: dict[str, str] = {
-    "дирхам": "AED", "дирхама": "AED", "дирхамов": "AED", "aed": "AED",
-    "рубл": "RUB", "руб": "RUB", "rub": "RUB",
-    "доллар": "USD", "usd": "USD", "$": "USD",
-    "евро": "EUR", "eur": "EUR", "€": "EUR",
+    "dirham": "AED", "dirhams": "AED", "aed": "AED",
+    "ruble": "RUB", "rubles": "RUB", "rub": "RUB",
+    "dollar": "USD", "usd": "USD", "$": "USD",
+    "euro": "EUR", "eur": "EUR", "€": "EUR",
 }
 
 
@@ -37,7 +37,7 @@ def _normalize_category(raw: str) -> str:
     for kw, cat in SYNONYMS.items():
         if kw in raw:
             return cat
-    return "другое"
+    return "other"
 
 
 def _detect_currency(text: str) -> str:
@@ -54,7 +54,7 @@ def _regex_fallback(text: str) -> dict:
     amount = max(0.0, amount)
 
     lower = text.lower()
-    category = "другое"
+    category = "other"
     for kw, cat in SYNONYMS.items():
         if kw in lower:
             category = cat
@@ -85,20 +85,20 @@ You are an expense parser. Extract structured data from the user's message.
 User message: "{text}"
 
 Pick the best category:
-- еда: groceries, food at home, supermarket, toast, sandwich, snacks, drinks
-- кафе: cafe, restaurant, coffee shop, eating out, takeaway order
-- транспорт: taxi, uber, bus, metro, fuel, parking
-- покупки: clothes, shoes, electronics, household items
-- развлечения: cinema, games, events, concerts, sports
-- здоровье: pharmacy, doctor visit, medicine, gym
-- жильё: rent, utilities, internet, housing
-- другое: anything that doesn't fit above
+- food: groceries, food at home, supermarket, toast, sandwich, snacks, drinks
+- cafe: cafe, restaurant, coffee shop, eating out, takeaway order
+- transport: taxi, uber, bus, metro, fuel, parking
+- shopping: clothes, shoes, electronics, household items
+- entertainment: cinema, games, events, concerts, sports
+- health: pharmacy, doctor visit, medicine, gym
+- housing: rent, utilities, internet, housing
+- other: anything that doesn't fit above
 
 Return ONLY valid JSON, no extra text:
 {{
   "amount": <number>,
   "currency": "<3-letter code, e.g. AED, RUB, USD>",
-  "category": "<one of: еда, транспорт, кафе, покупки, развлечения, здоровье, жильё, другое>",
+  "category": "<one of: food, transport, cafe, shopping, entertainment, health, housing, other>",
   "description": "<short description in the same language as the input, 3-6 words>"
 }}
 
@@ -121,7 +121,7 @@ Rules:
         return {
             "amount": amount,
             "currency": str(data.get("currency", "AED")).upper(),
-            "category": _normalize_category(str(data.get("category", "другое"))),
+            "category": _normalize_category(str(data.get("category", "other"))),
             "description": str(data.get("description", text.strip())),
         }
     except Exception as e:
