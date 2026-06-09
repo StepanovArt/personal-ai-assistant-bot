@@ -3,6 +3,7 @@ import logging
 import re
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from datetime import datetime, timedelta
 
 from bs4 import BeautifulSoup
 
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def fetch_unread_emails(service, period: str) -> list[dict]:
     """Fetch unread emails from Gmail inbox for the given period string (e.g. '1h', '3h', '1d')."""
-    from datetime import datetime, timedelta
+    
     now = datetime.now()
     value = int(period[:-1])
     unit = period[-1]

@@ -1,6 +1,3 @@
-# ============================================================
-# СТАНДАРТНАЯ БИБЛИОТЕКА
-# ============================================================
 import logging
 import os
 import string
@@ -40,24 +37,23 @@ def call_llm(prompt: str) -> str:
     try:
         return call_claude(prompt)
     except Exception as e:
-        logger.warning("Claude недоступен (%s), переключаюсь на Ollama", e)
+        logger.warning("Claude unavailable (%s), switching to Ollama", e)
         return call_ollama(prompt)
 
-# собираем URL
 def build_google_news_url(query:str,lang:str = 'en') ->str:
     """
-    Формирует URL для RSS-фида Google News по поисковому запросу.
+    Create URL for RSS Google News search based on query and language.
 
-    Пример:
+    Example:
         build_google_news_url("AI startup", "en")
         → "https://news.google.com/rss/search?q=AI+startup&hl=en&gl=US&ceid=US:en"
 
     Args:
-        query: поисковый запрос
-        lang: "en" или "ru"
+        query: search query string
+        lang: language code, either "en" or "ru". Determines the Google News edition
 
     Returns:
-        готовый URL для feedparser
+        URL for feedparser
     """
     query=quote_plus(query)
     if lang == 'ru':
@@ -65,15 +61,13 @@ def build_google_news_url(query:str,lang:str = 'en') ->str:
 
     else:
         return f"https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
-# извлекаем текст из статьи
-
 def fetch_article_text(url: str) -> str | None:
     """
-    Скачивает текст статьи.
-    Если URL — Google News обёртка, сначала декодирует в реальный URL.
+    Download article text.
+    If URL is a Google News wrapper, decode it to the real URL first.
     """
 
-    # 🆕 ШАГ 1: если это Google News URL — декодируем
+    
     if "news.google.com" in url:
         try:
             decoded = gnewsdecoder(url, interval=1)
@@ -82,14 +76,14 @@ def fetch_article_text(url: str) -> str | None:
                 url = decoded["decoded_url"]
                 logger.debug("Real URL: %s...", url[:70])
             else:
-                logger.warning("Не удалось декодировать Google URL")
+                logger.warning("Failed to decode Google News URL")
                 return None
 
         except Exception as e:
             logger.warning("Decoder error: %s", e)
             return None
 
-    # ШАГ 2: скачиваем как раньше
+    # download article content with trafilatura
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
@@ -100,7 +94,7 @@ def fetch_article_text(url: str) -> str | None:
         response = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
 
         if response.status_code != 200:
-            logger.warning("HTTP %s для %s", response.status_code, url[:70])
+            logger.warning("HTTP %s for %s", response.status_code, url[:70])
             return None
 
         text = trafilatura.extract(
@@ -112,10 +106,9 @@ def fetch_article_text(url: str) -> str | None:
         return text
 
     except Exception as e:
-        logger.warning("Ошибка загрузки статьи: %s", e)
+        logger.warning("Article fetch error: %s", e)
         return None
 
-#избавляемся от дубликатов
 def normalize_title(title:str)->str:
    title = title.lower()
    title = title.translate(str.maketrans('','',string.punctuation))

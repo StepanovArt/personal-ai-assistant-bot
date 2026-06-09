@@ -75,9 +75,9 @@ def _regex_fallback(text: str) -> dict:
 
 def extract_expense(text: str) -> dict:
     """
-    Извлекает структуру расхода из произвольного текста.
-    Возвращает dict с ключами: amount, currency, category, description.
-    При ошибке LLM — regex-fallback.
+    Extracts expense structure from free-form text.
+    Returns dict with keys: amount, currency, category, description.
+    Falls back to regex if LLM fails.
     """
     prompt = f"""
 You are an expense parser. Extract structured data from the user's message.
@@ -130,7 +130,7 @@ Rules:
 
 
 def save_expense(telegram_id: int, text: str) -> dict:
-    """Извлекает расход из текста и сохраняет в БД. Возвращает сохранённый dict."""
+    """Extracts expense from text and saves it to the DB. Returns the saved dict."""
     extracted = extract_expense(text)
     user = get_or_create_user(telegram_id, [])
     expense_id = add_expense(
@@ -148,12 +148,12 @@ def save_expense(telegram_id: int, text: str) -> dict:
 
 
 def get_monthly_summary(telegram_id: int) -> str:
-    """Возвращает текстовый отчёт по тратам за текущий месяц."""
+    """Returns a text report of expenses for the current month."""
     user = get_or_create_user(telegram_id, [])
     rows = get_total_by_category(user["id"], days=30)
 
     if not rows:
-        return "За последние 30 дней трат не найдено."
+        return "No expenses found in the last 30 days."
 
     month_name = datetime.now().strftime("%B %Y")
 

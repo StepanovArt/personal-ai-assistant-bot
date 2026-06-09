@@ -1,10 +1,10 @@
 """
-Content Creator Agent — генерация LinkedIn постов из трендов.
+Content Creator Agent — generates LinkedIn posts from trending news.
 
 Pipeline:
-1. TrendWatcher → новости
-2. SelectorAgent → выбор лучшей новости
-3. WriterAgent → генерация постов
+1. TrendWatcher → news articles
+2. SelectorAgent → picks the best article
+3. WriterAgent → generates the post
 """
 
 import json
@@ -21,12 +21,12 @@ from database.db import get_db,get_or_create_user, mark_news_shown
 # =========================
 
 def fetch_trends(telegram_id: int, interests: list[str], max_articles: int = 5) -> list[dict]:
-    """Получает свежие статьи через TrendWatcher."""
+    """Fetches fresh articles via TrendWatcher."""
 
     result = trend_graph.invoke({
         "telegram_id": telegram_id,
         "user_interests": interests,
-        "max_articles": max_articles,  # 🆕 чтобы граф знал сколько брать
+        "max_articles": max_articles,
     })
 
     return result.get("articles_with_text", []) or []
@@ -35,25 +35,24 @@ def fetch_trends(telegram_id: int, interests: list[str], max_articles: int = 5) 
 # 2. SELECT BEST NEWS (STRUCTURED)
 # =========================
 def pick_hottest_news(news_list: list[dict]) -> dict | None:
-    """LLM выбирает самую вирусную новость (через JSON output)."""
+    """LLM selects the most viral news item (via JSON output)."""
 
     if not news_list:
         return None
 
     if len(news_list) == 1:
         chosen = news_list[0].copy()
-        chosen["reason"] = "единственная статья"
+        chosen["reason"] = "only article available"
         return chosen
 
     news_text = ""
     for i, news in enumerate(news_list, 1):
-        # 🆕 берём первые 500 символов текста как превью для выбора
         text_preview = news.get("text", "")[:500]
 
         news_text += f"""
-    === НОВОСТЬ {i} ===
-    Заголовок: {news.get('title', 'N/A')}
-    Превью: {text_preview}...
+    === NEWS {i} ===
+    Title: {news.get('title', 'N/A')}
+    Preview: {text_preview}...
     """
 
     prompt = f"""
@@ -100,7 +99,7 @@ def pick_hottest_news(news_list: list[dict]) -> dict | None:
         data = json.loads(answer)
 
         idx = data.get("chosen_index")
-        reason = data.get("reason", "не указана")
+        reason = data.get("reason", "not provided")
 
         if not idx or idx < 1 or idx > len(news_list):
             raise ValueError("invalid index")
@@ -122,7 +121,7 @@ def pick_hottest_news(news_list: list[dict]) -> dict | None:
 # =========================
 
 def generate_linkedin_post(topic: str, context: str = "") -> dict:
-    """Генерирует 3 варианта поста."""
+    """Generates a LinkedIn post from the given topic and context."""
     logger.debug("Topic length: %d chars, context length: %d chars", len(topic), len(context))
     prompt = f"""
     You are a senior LinkedIn content writer for an AI/Tech engineer.
@@ -171,7 +170,7 @@ def generate_linkedin_post(topic: str, context: str = "") -> dict:
 
 
 def mark_article_as_used(telegram_id: int, article_url: str, article_title: str):
-    """Помечает статью как использованную для поста."""
+    """Marks an article as used for post generation."""
     with get_db() as conn:
         user = conn.execute("SELECT id FROM users WHERE telegram_id = ?",
             (telegram_id,)
@@ -182,7 +181,6 @@ def mark_article_as_used(telegram_id: int, article_url: str, article_title: str)
 
         user_id = user["id"]
 
-        # Сохраняем в shown_news
         conn.execute(
             """
             INSERT INTO shown_news (user_id, url, title, shown_at)
@@ -198,7 +196,6 @@ def mark_article_as_used(telegram_id: int, article_url: str, article_title: str)
 # =========================
 
 def create_post_from_trends(telegram_id: int, interests: list[str]) -> dict:
-    # Получаем user_id
     user = get_or_create_user(telegram_id, [])
     user_id = user["id"]
 
@@ -235,33 +232,3 @@ def create_post_from_trends(telegram_id: int, interests: list[str]) -> dict:
         "chosen_news": chosen,
         "variants": variants
     }
-
-# ============================================================
-# ТЕСТ
-# ============================================================
-if __name__ == "__main__":
-    print("✍️ Тест полного pipeline ContentCreator...")
-    print()
-
-    # Используй СВОЙ telegram_id и интересы
-    result = create_post_from_trends(
-        telegram_id=913679228,
-        interests=["AI"]
-    )
-
-    if "error" in result:
-        print(f"❌ Ошибка: {result['error']}")
-    else:
-        chosen = result["chosen_news"]
-        print(f"\n🎯 ВЫБРАННАЯ НОВОСТЬ:")
-        print(f"   Заголовок: {chosen['title']}")
-        print(f"   URL: {chosen.get('url', 'N/A')}")
-        print(f"   Почему: {chosen['reason']}")
-
-        print(f"\n📝 СГЕНЕРИРОВАННЫЕ ВАРИАНТЫ:\n")
-        for key, variant_text in result["variants"].items():
-            print(f"\n{'=' * 70}")
-            print(f"📝 {key.upper()}")  # ← просто ключ (story/educational/opinion)
-            print(f"{'=' * 70}")
-            print(variant_text)  # ← это и есть текст поста
-            print(f"\n📊 Длина: {len(variant_text)} символов")
