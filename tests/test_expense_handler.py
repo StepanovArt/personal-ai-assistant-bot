@@ -72,7 +72,7 @@ async def test_process_expense_db_error_sends_friendly_message(message, state, m
     await process_expense(message, state)
 
     reply = message.answer.call_args[0][0]
-    assert "Не удалось" in reply
+    assert "Failed to save" in reply
 
 
 async def test_expense_stats_sends_summary(callback, monkeypatch):
